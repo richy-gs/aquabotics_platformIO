@@ -1,168 +1,111 @@
-// #include <Arduino.h>
-
-// // // #1 Motor Driver Connections
-// // // // Motor A connections (No hay suficiente corriente)
-// // // int enA = 15;
-// // // int in1 = 16;
-// // // int in2 = 17;
-// // // // Motor B connections 
-// // // int enB = 3;
-// // // int in3 = 18;
-// // // int in4 = 8;
-
-// // // #2 Motor Driver Connections
-// // // // Motor A connections (No hay suficiente corriente)
-// // // int enA = 2;
-// // // int in1 = 42;
-// // // int in2 = 41;
-// // // // Motor B connections
-// // // int enB = 37;
-// // // int in3 = 40;
-// // // int in4 = 39;
-
-// // // #3 Motor Driver Connections
-// // // Motor A connections
-// // // int enA = 14;
-// // // int in1 = 12;
-// // // int in2 = 13;
-// // // // // Motor B connections
-// // // int enB = 9;
-// // // int in3 = 11;
-// // // int in4 = 10;
-
-// // int enMotorPins[6] = {4, 16, 9, 14, 2, 37};
-// // int inMotorPins[6] = {5, 7, 10, 12, 42, 40};
-// // int inMotorPins2[6] = {6, 15, 11, 13, 41, 39}; 
-
-// int enA = 9;
-// int in1 = 10;
-// int in2 = 11;
-// // // Motor B connections
-// int enB = 14;
-// int in3 = 12;
-// int in4 = 13;
-
-// void setup() {
-//   // pinMode(38, OUTPUT);
-//   // Set all the motor control pins to outputs
-//   pinMode(enA, OUTPUT);
-//   pinMode(enB, OUTPUT);
-//   pinMode(in1, OUTPUT);
-//   pinMode(in2, OUTPUT);
-//   pinMode(in3, OUTPUT);
-//   pinMode(in4, OUTPUT);
-
-//   // Turn off motors - Initial state
-//   digitalWrite(in1, LOW);
-//   digitalWrite(in2, LOW);
-//   digitalWrite(in3, LOW);
-//   digitalWrite(in4, LOW);
-// }
-
-// void loop() {
-//   // digitalWrite(38, HIGH);
-//   // // digitalWrite(1, HIGH);
-//   // // Turn on motors
-//   digitalWrite(in1, LOW);
-//   digitalWrite(in2, HIGH);
-//   digitalWrite(in3, LOW);
-//   digitalWrite(in4, HIGH);
-
-
-//   analogWrite(enA, 255);
-//   analogWrite(enB, 255);
-//   delay(12000); // Wait before the next loop iteration
-
-//   // Accelerate from zero to maximum speed
-//   // for (int i = 150; i < 256; i++) {
-//   //   analogWrite(enA, i);
-//   //   analogWrite(enB, i);
-//   //   delay(100);
-//   // }
-
-//   // Decelerate from maximum speed to zero
-//   // for (int i = 255; i >= 150; --i) {
-//   //   analogWrite(enA, i);
-//   //   analogWrite(enB, i);
-//   //   delay(100);
-//   // }
-
-//   // Now turn off motors
-//   // digitalWrite(in1, LOW);
-//   // digitalWrite(in2, LOW);
-//   // digitalWrite(in3, LOW);
-//   // digitalWrite(in4, LOW);
-// }
-
-
-
 #include <Arduino.h>
+#include <micro_ros_platformio.h>
 
-// int enMotorPins[6] = {4, 16, 9, 14, 2, 37};
-// int inMotorPins[6] = {5, 7, 10, 12, 42, 40};
-// int inMotorPins2[6] = {6, 15, 11, 13, 41, 39}; 
+#include <rcl/rcl.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
 
-int enMotorPins[6] = {15, 3, 2, 37, 14, 9};
-int inMotorPins[6] = {16, 18, 42, 40, 12, 11};
-int inMotorPins2[6] = {17, 8, 41, 39, 13, 10}; 
+#include <std_msgs/msg/int32_multi_array.h>
 
-// 2
-// 14
-// 15
+#if !defined(MICRO_ROS_TRANSPORT_ARDUINO_SERIAL)
+#error This example is only available for Arduino framework with serial transport.
+#endif
+
+// Pines del hardware
+int enMotorPins[6]   = {15, 3, 2, 37, 14, 9};
+int inMotorPins[6]   = {16, 18, 42, 40, 12, 11};
+int inMotorPins2[6]  = {17, 8, 41, 39, 13, 10};
+
+// micro-ROS core objects
+rcl_subscription_t subscriber;
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+rcl_node_t node;
+
+// Mensaje del suscriptor
+std_msgs__msg__Int32MultiArray motor_msg;
+
+// Macros de seguridad
+#define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();} }
+#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){} }
+
+void error_loop() {
+  while (1) {
+    delay(100);
+  }
+}
+
+// Lógica de control para el motor
+void control_motor(int index, int direction, int speed) {
+  if (index < 0 || index >= 6) return;
+  speed = constrain(speed, 0, 255);
+
+  if (direction == 1) {
+    digitalWrite(inMotorPins[index], HIGH);
+    digitalWrite(inMotorPins2[index], LOW);
+  } else if (direction == -1) {
+    digitalWrite(inMotorPins[index], LOW);
+    digitalWrite(inMotorPins2[index], HIGH);
+  } else {
+    digitalWrite(inMotorPins[index], LOW);
+    digitalWrite(inMotorPins2[index], LOW);
+  }
+
+  analogWrite(enMotorPins[index], speed);
+}
+
+// Callback del subscriber
+void motor_command_callback(const void *msgin) {
+  const std_msgs__msg__Int32MultiArray * msg = (const std_msgs__msg__Int32MultiArray *) msgin;
+  if (msg->data.size < 3) return;
+
+  int index     = msg->data.data[0];
+  int direction = msg->data.data[1];
+  int speed     = msg->data.data[2];
+
+  control_motor(index, direction, speed);
+}
+
 void setup() {
-  // // Set all the motor control pins to outputs
+  // Serial para micro-ROS
+  Serial.begin(115200);
+  set_microros_serial_transports(Serial);
+  delay(2000);
+
+  // Configurar pines
   for (int i = 0; i < 6; i++) {
     pinMode(enMotorPins[i], OUTPUT);
     pinMode(inMotorPins[i], OUTPUT);
     pinMode(inMotorPins2[i], OUTPUT);
-  }
-
-  // Turn off motors - Initial state
-  for (int i = 0; i < 6; i++) {
     digitalWrite(inMotorPins[i], LOW);
     digitalWrite(inMotorPins2[i], LOW);
   }
+
+  allocator = rcl_get_default_allocator();
+
+  // Inicializar soporte y nodo
+  RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+  RCCHECK(rclc_node_init_default(&node, "motor_control_node", "", &support));
+
+  // Inicializar suscriptor
+  RCCHECK(rclc_subscription_init_default(
+    &subscriber,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32MultiArray),
+    "motor_command"));
+
+  // Inicializar executor
+  RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+  RCCHECK(rclc_executor_add_subscription(
+    &executor,
+    &subscriber,
+    &motor_msg,
+    &motor_command_callback,
+    ON_NEW_DATA));
 }
 
 void loop() {
-  // Example of how to control the motors
-  for(int i = 0; i < 6; i++)   {
-    digitalWrite(inMotorPins[i], HIGH);
-    digitalWrite(inMotorPins2[i], LOW);
-  }  
-
-  for(int i = 0; i < 6; i++) {
-    analogWrite(enMotorPins[i], 255);
-  }
-  // analogWrite(enMotorPins[2], 255);
-  // analogWrite(enMotorPins[3], 255);
-  delay(12000); // Wait before the next loop iteration
-
-  // // Accelerate from zero to maximum speed
-  // for (int i = 150; i < 256; i++) {
-  //   for(int j = 0; j < 6; j++) {
-  //     if(j%2 == 0) {
-  //       analogWrite(enMotorPins[j], i);
-  //     }
-  //   }
-  //   delay(100);
-  // }
-
-  // // Decelerate from maximum speed to zero
-  // for (int i = 255; i >= 150; --i) {
-  //   for(int j = 0; j < 6; j++) {
-  //     if(j%2 == 0) {
-  //       analogWrite(enMotorPins[j], i);
-  //     }
-  //   }
-  //   delay(100);
-  // }
-
-  // Now turn off motors
-  // for (int i = 0; i < 6; i++) {
-  //   digitalWrite(inMotorPins[i], LOW);
-  //   digitalWrite(inMotorPins2[i], LOW);
-  // }
-  // delay(6000); // Wait before the next loop iteration
+  delay(100);
+  RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100)));
 }
-
