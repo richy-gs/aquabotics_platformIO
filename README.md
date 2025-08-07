@@ -8,17 +8,19 @@ This repository contains the PlatformIO firmware for **Aquabotics**—the ESP32-
 
 ```
 aquabotics_platformIO/
-├── README.md
+├── bno055_IMU/ # IMU example code and configs
+├── examples/ # Additional demo sketches
 ├── images/
-│ └── motor_state_machine.png
-├── src/
-│ └── main.cpp
+│ └── motor_state_machine.png # Main state-machine diagram
 ├── include/
-│ └── config.h
-├── platformio.ini
-└── lib/
-├── micro_ros_arduino/
-└── utils/
+├── lib/
+├── microROS/ # Additional demo sketches about MicroROS
+├── src/
+│ └── main.cpp # setup(), loop(), callback logic
+├── test/ # Unit & integration tests
+├── .gitignore
+├── README.md
+└── platformio.ini # Board settings & dependencies
 ```
 
 - **platformio.ini**  
@@ -35,13 +37,6 @@ aquabotics_platformIO/
     - Reads index, direction, and speed  
     - Applies a change-threshold filter  
     - Calls `control_motor(idx, dir, speed)` to drive the L298N
-
-- **include/config.h**  
-  Pin definitions, dead-zone thresholds, and micro-ROS settings.
-
-- **lib/**  
-  - `micro_ros_arduino/`: Micro-ROS Arduino transport and helper APIs  
-  - `utils/`: Helper functions for debugging and error handling
 
 ---
 
@@ -78,7 +73,7 @@ ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyACM0
 
 ## 📈 Main State Machine Diagram
 <img src="images/motor_state_machine.png" 
-     alt="Esp32 Workflow" 
+     alt="Motor State Machine Workflow" 
      width="500"/>
 
 1. Left: `setup()` flow—serial/GPIO init, micro-ROS node creation, subscription setup.
